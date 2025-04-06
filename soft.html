@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photobooth with Neutral Soft Filter</title>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; }
+        .photobooth-frame {
+            width: 300px;
+            height: 900px;
+            border: 10px solid black;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            align-items: center;
+            margin: auto;
+        }
+        .photo-slot {
+            width: 280px;
+            height: 280px;
+            border: 5px dashed grey;
+            background-color: #f0f0f0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <h2>Photobooth with Neutral Soft Filter</h2>
+    <video id="videoElement" autoplay></video>
+    <div id="countdown"></div>
+    <button onclick="startPhotobooth()">Take Pictures</button>
+
+    <div class="photobooth-frame" id="photoboothFrame">
+        <div class="photo-slot" id="photo1">Photo 1</div>
+        <div class="photo-slot" id="photo2">Photo 2</div>
+        <div class="photo-slot" id="photo3">Photo 3</div>
+    </div>
+
+    <button id="downloadButton" onclick="downloadPhotobooth()">Download Photobooth Strip</button>
+    <canvas id="canvasElement"></canvas>
+    <canvas id="photoboothCanvas" width="300" height="900"></canvas> 
+
+    <script>
+        navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            document.getElementById('videoElement').srcObject = stream;
+        })
+        .catch(error => {
+            console.error("Error accessing webcam:", error);
+        });
+
+        const photos = [];
+        let photoIndex = 0;
+
+        function startPhotobooth() {
+            const countdownEl = document.getElementById("countdown");
+            const video = document.getElementById("videoElement");
+            const selectedFilter = "neutralsoft"; // Default to Neutral Soft Filter
+
+            let count = 3;
+
+            function countdownAndCapture() {
+                if (photoIndex < 3) {
+                    countdownEl.innerText = count;
+
+                    const timer = setInterval(() => {
+                        count--;
+                        countdownEl.innerText = count;
+
+                        if (count < 0) {
+                            clearInterval(timer);
+                            countdownEl.innerText = "*Click!* 📸";
+
+                            const canvas = document.getElementById("canvasElement");
+                            const ctx = canvas.getContext("2d");
+
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+
+                            const size = Math.min(video.videoWidth, video.videoHeight);
+                            const xOffset = (video.videoWidth - size) / 2;
+                            const yOffset = (video.videoHeight - size) / 2;
+
+                            ctx.drawImage(video, xOffset, yOffset, size, size, 0, 0, canvas.width, canvas.height);
+
+                            applyFilter(ctx, canvas, selectedFilter);
+
+                            const photoDataURL = canvas.toDataURL();
+                            photos.push(photoDataURL);
+
+                            const photoSlot = document.getElementById(`photo${photoIndex + 1}`);
+                            const img = document.createElement("img");
+                            img.src = photoDataURL;
+                            img.style.width = "100%";
+                            img.style.height = "100%";
+                            photoSlot.innerHTML = "";
+                            photoSlot.appendChild(img);
+
+                            photoIndex++;
+                            count = 3;
+                            countdownAndCapture();
+                        }
+                    }, 1000);
+                }
+            }
+            countdownAndCapture();
+        }
+
+        // Apply Neutral Soft Filter
+        function applyFilter(ctx, canvas, filter) {
+            let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            let pixels = imageData.data;
+
+            for (let i = 0; i < pixels.length; i += 4) {
+                let r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+
+                if (filter === "neutralsoft") {
+                    // Reduce contrast slightly
+                    pixels[i] = Math.min(r * 1.1 + 10, 255);
+                    pixels[i + 1] = Math.min(g * 1.1 + 10, 255);
+                    pixels[i + 2] = Math.min(b * 1.1 + 10, 255);
+
+                    // Add warm beige tones
+                    pixels[i] = Math.min(pixels[i] + 10, 255); // Boost red
+                    pixels[i + 1] = Math.min(pixels[i + 1] + 5, 255); // Boost green
+
+                    // Slightly soften shadows
+                    pixels[i + 2] = Math.max(pixels[i + 2] - 5, 0); // Reduce blue
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        // Download the photobooth strip
+        function downloadPhotobooth() {
+            const photoboothCanvas = document.getElementById("photoboothCanvas");
+            const ctx = photoboothCanvas.getContext("2d");
+
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, photoboothCanvas.width, photoboothCanvas.height);
+
+            for (let i = 0; i < 3; i++) {
+                const img = document.querySelector(`#photo${i + 1} img`);
+                if (img) {
+                    const photo = new Image();
+                    photo.src = img.src;
+                    ctx.drawImage(photo, 10, i * 300 + 10, 280, 280);
+                }
+            }
+
+            setTimeout(() => {
+                const downloadLink = document.createElement("a");
+                downloadLink.href = photoboothCanvas.toDataURL("image/png");
+                downloadLink.download = "Neutral_Soft_Photobooth_Strip.png";
+                downloadLink.click();
+            }, 500);
+        }
+    </script>
+
+</body>
+</html>

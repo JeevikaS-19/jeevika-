@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Black & White Long Exposure (Crop-to-Fit)</title>
+    <style>
+        body { text-align: center; font-family: Arial, sans-serif; background-color: black; color: white; }
+        video { transform: scaleX(-1); }
+        .photobooth-frame {
+            width: 300px;
+            height: 900px;
+            border: 10px solid white;
+            background: black;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            align-items: center;
+            margin: auto;
+        }
+        .photo-slot {
+            width: 280px;
+            height: 280px;
+            border: 5px dashed white;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #flash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease-out;
+        }
+        canvas { display: none; }
+    </style>
+</head>
+<body>
+
+    <h2>Black & White Long Exposure (Crop-to-Fit)</h2>
+    <video id="videoElement" autoplay></video>
+    <div id="countdown"></div>
+    <button onclick="startPhotobooth()">Take Pictures</button>
+
+    <div id="flash"></div>
+
+    <div class="photobooth-frame" id="photoboothFrame">
+        <div class="photo-slot" id="photo1">Photo 1</div>
+        <div class="photo-slot" id="photo2">Photo 2</div>
+        <div class="photo-slot" id="photo3">Photo 3</div>
+    </div>
+
+    <canvas id="canvasElement"></canvas>
+    <canvas id="photoboothCanvas" width="300" height="900"></canvas>
+
+    <script>
+        navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            document.getElementById('videoElement').srcObject = stream;
+        })
+        .catch(error => {
+            console.error("Error accessing webcam:", error);
+        });
+
+        const photos = [];
+        let photoIndex = 0;
+
+        function startPhotobooth() {
+            const countdownEl = document.getElementById("countdown");
+            const video = document.getElementById("videoElement");
+            const flashEl = document.getElementById("flash");
+
+            let count = 3;
+
+            function countdownAndCapture() {
+                if (photoIndex < 3) {
+                    countdownEl.innerText = count;
+
+                    const timer = setInterval(() => {
+                        count--;
+                        countdownEl.innerText = count;
+
+                        if (count < 0) {
+                            clearInterval(timer);
+                            countdownEl.innerText = "*Click!* 📸";
+
+                            flashEl.style.opacity = 1;
+                            setTimeout(() => flashEl.style.opacity = 0, 500); // Flash effect
+
+                            const canvas = document.getElementById("canvasElement");
+                            const ctx = canvas.getContext("2d");
+
+                            canvas.width = video.videoWidth;
+                            canvas.height = video.videoHeight;
+
+                            // Crop and fit the image into the canvas
+                            const frameWidth = canvas.width;
+                            const frameHeight = canvas.height;
+                            const aspectRatio = frameWidth / frameHeight;
+
+                            const videoAspectRatio = video.videoWidth / video.videoHeight;
+
+                            let cropWidth, cropHeight, cropX, cropY;
+                            if (videoAspectRatio > aspectRatio) {
+                                cropHeight = video.videoHeight;
+                                cropWidth = video.videoHeight * aspectRatio;
+                                cropX = (video.videoWidth - cropWidth) / 2;
+                                cropY = 0;
+                            } else {
+                                cropWidth = video.videoWidth;
+                                cropHeight = video.videoWidth / aspectRatio;
+                                cropX = 0;
+                                cropY = (video.videoHeight - cropHeight) / 2;
+                            }
+
+                            const frames = 10;
+                            const frameInterval = 50;
+                            let blendedImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                            for (let i = 0; i < frames; i++) {
+                                setTimeout(() => {
+                                    ctx.save();
+                                    ctx.scale(-1, 1); // Mirror
+                                    ctx.drawImage(video, cropX, cropY, cropWidth, cropHeight, -canvas.width, 0, canvas.width, canvas.height);
+                                    ctx.restore();
+
+                                    const currentImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                    for (let j = 0; j < blendedImage.data.length; j++) {
+                                        blendedImage.data[j] = Math.min(blendedImage.data[j] + currentImage.data[j] / frames, 255);
+                                    }
+
+                                    ctx.putImageData(blendedImage, 0, 0);
+
+                                    if (i === frames - 1) {
+                                        applyBlackAndWhite(ctx, canvas);
+
+                                        const photoDataURL = canvas.toDataURL();
+                                        photos.push(photoDataURL);
+
+                                        const photoSlot = document.getElementById(`photo${photoIndex + 1}`);
+                                        const img = document.createElement("img");
+                                        img.src = photoDataURL;
+                                        img.style.width = "100%";
+                                        img.style.height = "100%";
+                                        photoSlot.innerHTML = "";
+                                        photoSlot.appendChild(img);
+
+                                        photoIndex++;
+                                        count = 3;
+                                        countdownAndCapture();
+                                    }
+                                }, i * frameInterval);
+                            }
+                        }
+                    }, 1000);
+                }
+            }
+            countdownAndCapture();
+        }
+
+        function applyBlackAndWhite(ctx, canvas) {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const pixels = imageData.data;
+
+            for (let i = 0; i < pixels.length; i += 4) {
+                const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+                const avg = (r + g + b) / 3;
+
+                pixels[i] = pixels[i + 1] = pixels[i + 2] = avg; // Convert to grayscale
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function downloadPhotobooth() {
+            const photoboothCanvas = document.getElementById("photoboothCanvas");
+            const ctx = photoboothCanvas.getContext("2d");
+
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, photoboothCanvas.width, photoboothCanvas.height);
+
+            for (let i = 0; i < 3; i++) {
+                const img = document.querySelector(`#photo${i + 1} img`);
+                if (img) {
+                    const photo = new Image();
+                    photo.src = img.src;
+                    ctx.drawImage(photo, 10, i * 300 + 10, 280, 280);
+                }
+            }
+
+            setTimeout(() => {
+                const downloadLink = document.createElement("a");
+                downloadLink.href = photoboothCanvas.toDataURL("image/png");
+                downloadLink.download = "Black_White_Cropped_Fit_Strip.png";
+                downloadLink.click();
+            }, 500);
+        }
+    </script>
+
+</body>
+</html>
